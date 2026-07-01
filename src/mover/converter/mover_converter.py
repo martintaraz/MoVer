@@ -83,11 +83,15 @@ async def capture_frames_server_driven(
     fps: int = 30,
     output_format: str = "mp4",
     in_memory: bool = False,
-) -> None | list[io.FileIO]:
+) -> tuple[list, float] | None:
     """
     Server-driven frame capture: Python controls the timeline and screenshots.
     Video/GIF frames are streamed through a temp directory; PNG/SVG outputs
     are saved as per-frame files in a directory.
+
+    With ``in_memory=True`` (PNG/SVG formats only), nothing is written to disk;
+    returns ``(frames, duration)`` where frames are float32 RGBA arrays in
+    [0, 1] for PNG or ``io.StringIO`` SVG markup for SVG.
     """
     output_format = output_format.lower()
     if fps <= 0:
@@ -104,12 +108,7 @@ async def capture_frames_server_driven(
     print(f"Capturing {capture_frame_count} frames at {fps} FPS (duration: {duration}s)")
 
     ## Hide GSDevTools if present (it overlays on top of the SVG).
-    await page.evaluate("""() => {
-        const devtools = document.querySelector('#GSDevTools');
-        if (devtools) devtools.style.display = 'none';
-        // Also hide any GSDevTools container elements
-        document.querySelectorAll('[class*="gs-dev-tools"]').forEach(el => el.style.display = 'none');
-    }""")
+    await page.evaluate("() => hideGSDevTools()")
 
     ## Locate the SVG element once.
     svg_element = page.locator("svg").first
@@ -172,7 +171,7 @@ async def capture_frames_server_driven(
                 print(f"  Captured frame {frame_index + 1}/{capture_frame_count}")
 
         if output_format in FRAME_OUTPUT_FORMATS and in_memory:
-            return frames, 0
+            return frames, duration
 
         if output_format in FRAME_OUTPUT_FORMATS and not in_memory:
             print(f"{output_format.upper()} frames saved to {frames_dir}")
