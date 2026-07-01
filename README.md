@@ -131,6 +131,29 @@ To understand how MoVer's LLM-based animation synthesizer generates SVG animatio
 - Each SVG animation is saved as an HTML file (see `examples/`). To properly render the HTML file, first get all the files in `src/mover/converter/assets/` and put them in the same directory as the HTML file. Then open the HTML file in your browser to see the animation in action.
 - With `--create-video`, the converter can render animation outputs with `--format mp4`, `--format gif`, `--format png`, or `--format svg`. PNG and SVG formats write per-frame files, and `--video-fps` controls both output frame sampling and JSON sampling.
 
+### Fast batched rendering
+`convert_animation` pays ~1 s of fixed cost per render (server + browser startup and page load). When the same animation must be rendered many times — parameter optimization, sampling sweeps — use [`browser_pool.py`](src/mover/converter/browser_pool.py) instead: a `RenderSession` keeps the server and page alive across renders, and captures N frames with a **single** screenshot (the frames are stacked in the DOM by `seekAndAppendToDomUsingTimes` in [`convert.js`](src/mover/converter/assets/convert.js), then sliced into numpy arrays).
+
+```python
+from mover.converter.browser_pool import RenderSession, BrowserPool
+import numpy as np
+
+session = RenderSession("animation.html").start()
+frames, duration = session.capture_frames_at_fractions(np.linspace(0, 1, 30))
+## frames: list of float32 RGBA arrays in [0, 1], shape (128, 128, 4)
+session.close()
+
+## Parallel rendering from multiple threads:
+pool = BrowserPool("animation.html", n_workers=4)
+with pool.acquire() as session:
+    frames, duration = session.capture_frames_at_fractions(np.linspace(0, 1, 30))
+pool.shutdown()
+```
+
+`session.evaluate(js)` runs custom JavaScript against the live page (its global scope persists across calls), so callers can e.g. mutate animation parameters and rebuild the timeline between captures without reloading.
+
+Measured with [`tests/benchmark_browser_pool.py`](tests/benchmark_browser_pool.py) (30 frames @ 128 px): ~3.7 s/render cold and per-frame (the `convert_animation` status quo) vs ~87 ms/render with a warm session and batched capture — a ~40x speedup. Unit tests live in [`tests/test_browser_pool.py`](tests/test_browser_pool.py).
+
 ### MoVer DSL
 The MoVer DSL is designed with predicates corresponding to spatial-temporal concepts that people commonly use in natural language to describe motions. For example, for the following animation prompt:
 > Translate the black square upwards by 100 px
