@@ -152,7 +152,18 @@ function uniquifySvgIds(svg, prefix) {
   });
 }
 
-function seekAndAppendToDom() {
+// Marks the frame wrappers created by seekAndAppendToDomUsingTimes so that
+// resetSeekAndAppend removes exactly what was added and nothing else.
+const BATCH_FRAME_CLASS = "mover-batch-frame";
+
+// Hide GSDevTools overlays so they never appear in captured frames.
+function hideGSDevTools() {
+    const devtools = document.querySelector("#GSDevTools");
+    if (devtools) devtools.style.display = "none";
+    document.querySelectorAll('[class*="gs-dev-tools"]').forEach(el => el.style.display = "none");
+}
+
+function seekAndAppendToDom(frameSize = 128) {
     let info = getAnimationInfo();
     let times = []
     for (let i = 0; i < info.steps; i++) {
@@ -160,41 +171,52 @@ function seekAndAppendToDom() {
             info.animDuration * i / info.steps
         );
     }
-    seekAndAppendToDomUsingTimes(times)
+    seekAndAppendToDomUsingTimes(times, frameSize)
 }
 
-function seekAndAppendToDomUsingTimes(seekTimes) {
+// Seek the timeline to each time in seekTimes and append a frameSize×frameSize
+// snapshot of the SVG to the body, forming a vertical stack of frames that can
+// be captured with a single full-page screenshot and sliced at i*frameSize.
+function seekAndAppendToDomUsingTimes(seekTimes, frameSize = 128) {
+    const srcSvg = document.querySelector("body > svg");
     for (let i = 0; i < seekTimes.length; i++) {
         tl_to_use.seek(seekTimes[i], false);
         tl_to_use.pause();
-        const srcSvg = document.querySelector("body > svg");
         const wrapper = document.createElement("div");
+        wrapper.className = BATCH_FRAME_CLASS;
         const svgCopy = srcSvg.cloneNode(true);
-        uniquifySvgIds(svgCopy, "timestamp_"+seekTimes[i]);
-        wrapper.appendChild(svgCopy);
-
+        uniquifySvgIds(svgCopy, "timestamp_" + seekTimes[i]);
         wrapper.appendChild(svgCopy);
         document.body.appendChild(wrapper);
 
-        wrapper.style.width = "128px";
-        wrapper.style.height = "128px";
+        wrapper.style.width = frameSize + "px";
+        wrapper.style.height = frameSize + "px";
         wrapper.style.overflow = "hidden";
 
-        svgCopy.classList.remove("svg-width-fit-preview-target");
-
-        svgCopy.style.setProperty("width", "128px", "important");
-        svgCopy.style.setProperty("height", "128px", "important");
+        svgCopy.style.setProperty("width", frameSize + "px", "important");
+        svgCopy.style.setProperty("height", frameSize + "px", "important");
         svgCopy.style.setProperty("display", "block", "important");
     }
-    document.querySelector("body > svg").style.setProperty("visibility", "hidden");
-    document.querySelector("body > br").style.setProperty("visibility", "hidden");
-    document.querySelector("body").style.setProperty("padding", "0", "important");
+    // display:none (not visibility:hidden): visibility keeps the source SVG's
+    // layout space, which pushed the frame stack down and made pixel-slicing
+    // captures read the wrong rows. display:none starts the stack at row 0.
+    // Zeroing body margin/padding for the same reason: the frame at index i
+    // must start exactly at pixel row i*frameSize, column 0.
+    srcSvg.style.setProperty("display", "none", "important");
+    const br = document.querySelector("body > br");
+    if (br) br.style.setProperty("display", "none");
+    document.body.style.setProperty("margin", "0", "important");
+    document.body.style.setProperty("padding", "0", "important");
+    hideGSDevTools();
 }
 
 function resetSeekAndAppend() {
-    document.querySelector("body > svg").style.setProperty("visibility", "visible");
-    document.querySelectorAll("body > div").forEach(d => d.remove());
-
+    document.querySelector("body > svg").style.removeProperty("display");
+    const br = document.querySelector("body > br");
+    if (br) br.style.removeProperty("display");
+    document.body.style.removeProperty("margin");
+    document.body.style.removeProperty("padding");
+    document.querySelectorAll("." + BATCH_FRAME_CLASS).forEach(d => d.remove());
 }
 
 
