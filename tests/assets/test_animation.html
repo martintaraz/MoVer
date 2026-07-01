@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link href="./index.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<title>browser_pool test animation</title>
+</head>
+<body>
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <rect id="background" x="0" y="0" width="200" height="200" fill="#ffffff"/>
+  <circle id="ball" cx="40" cy="60" r="20" fill="#d62728"/>
+  <rect id="box" x="130" y="120" width="40" height="40" fill="#1f77b4"/>
+</svg>
+<br/>
+<script>
+  // Deterministic 2-second animation: linear motion + rotation, no easing.
+  const tl = gsap.timeline();
+  tl.to("#ball", { x: 120, duration: 2, ease: "none" }, 0);
+  tl.to("#box", { rotation: 180, transformOrigin: "50% 50%", duration: 1.5, ease: "none" }, 0.5);
+  let tl_to_use = tl;
+</script>
+<script src="./convert.js"></script>
+</body>
+</html>
