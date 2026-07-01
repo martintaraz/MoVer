@@ -94,6 +94,29 @@ class TestRenderSession(unittest.TestCase):
         )
         self.assertNotEqual(svg_display, "none")
 
+    def test_failed_capture_cleans_up(self):
+        """A timeline that throws mid-append must not leave frame wrappers or a
+        hidden source SVG behind — they would corrupt every subsequent capture
+        on this session."""
+        _session.evaluate("""() => {
+            window._origSeek = tl_to_use.seek.bind(tl_to_use);
+            let calls = 0;
+            tl_to_use.seek = (...args) => {
+                if (++calls >= 2) throw new Error('boom');
+                return window._origSeek(...args);
+            };
+        }""")
+        try:
+            with self.assertRaises(Exception):
+                _session.capture_frames_at_times([0.0, 0.5, 1.0])
+        finally:
+            _session.evaluate("() => { tl_to_use.seek = window._origSeek; }")
+        leftovers = _session.evaluate("() => document.querySelectorAll('.mover-batch-frame').length")
+        self.assertEqual(leftovers, 0)
+        frames = _session.capture_frames_at_times([0.0, ANIMATION_DURATION])
+        self.assertEqual(len(frames), 2)
+        self.assertGreater(np.abs(frames[0] - frames[1]).mean(), 0.005)
+
     def test_evaluate_persists_page_globals(self):
         """evaluate() must see and mutate the page's global scope across calls
         — external tooling relies on this to rebuild timelines in place."""

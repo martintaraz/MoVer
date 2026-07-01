@@ -47,6 +47,9 @@ from mover.converter.mover_converter import (
     setup_fastapi_app,
 )
 
+## Chromium rejects/clips capture surfaces beyond ~16384 px on a side.
+_MAX_SCREENSHOT_HEIGHT_PX = 16_000
+
 
 class RenderSession:
     """
@@ -74,9 +77,9 @@ class RenderSession:
     frame_size : int
         Side length in pixels of captured square frames.
     max_frames_per_screenshot : int
-        Batched captures are chunked so a single screenshot never exceeds
-        ``frame_size * max_frames_per_screenshot`` pixels in height (Chromium
-        rejects very tall capture surfaces).
+        Upper bound on frames captured per screenshot. The effective bound is
+        additionally capped so a screenshot never exceeds ~16k px in height
+        (Chromium clips taller capture surfaces).
     """
 
     def __init__(self, html_file: str | Path, output_dir: str | Path | None = None,
@@ -183,23 +186,36 @@ class RenderSession:
 
     async def _capture_async(self, seek_times: list[float]) -> list[np.ndarray]:
         size = self.frame_size
+        ## Chromium clips capture surfaces beyond ~16k px, which would make the
+        ## slicing below silently return empty/partial frames — bound each
+        ## screenshot's height in pixels, not just in frames.
+        per_shot = min(self.max_frames_per_screenshot, max(1, _MAX_SCREENSHOT_HEIGHT_PX // size))
         frames: list[np.ndarray] = []
-        for start in range(0, len(seek_times), self.max_frames_per_screenshot):
-            chunk = seek_times[start:start + self.max_frames_per_screenshot]
+        for start in range(0, len(seek_times), per_shot):
+            chunk = seek_times[start:start + per_shot]
             await self._page.set_viewport_size({"width": size, "height": size * len(chunk)})
-            await self._page.evaluate(
-                "([times, size]) => seekAndAppendToDomUsingTimes(times, size)", [chunk, size]
-            )
-            ## Two rAFs guarantee the appended frames have been painted.
-            await self._page.evaluate(
-                "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
-            )
             try:
+                await self._page.evaluate(
+                    "([times, size]) => seekAndAppendToDomUsingTimes(times, size)", [chunk, size]
+                )
+                ## Two rAFs guarantee the appended frames have been painted.
+                await self._page.evaluate(
+                    "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
+                )
                 png_bytes = await self._page.screenshot(type="png", full_page=True)
             finally:
+                ## Runs even after a mid-append failure (e.g. a broken timeline
+                ## throwing in seek) — leftover wrappers and a hidden source SVG
+                ## would corrupt every subsequent capture on this page.
                 await self._page.evaluate("() => resetSeekAndAppend()")
             img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
             stack = np.asarray(img, dtype=np.float32) / 255.0
+            if stack.shape[0] < size * len(chunk) or stack.shape[1] < size:
+                raise RuntimeError(
+                    f"Screenshot is {stack.shape[1]}x{stack.shape[0]} px but {len(chunk)} "
+                    f"frames of {size} px need {size}x{size * len(chunk)} — refusing to "
+                    f"slice a clipped capture into corrupted frames"
+                )
             for i in range(len(chunk)):
                 frames.append(stack[i * size:(i + 1) * size, :size])
         return frames
