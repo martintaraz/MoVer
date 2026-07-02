@@ -102,7 +102,7 @@ class TestRenderSession(unittest.TestCase):
         _session.capture_frames_at_times([0.0, 1.0])
         leftovers = _session.evaluate("() => document.querySelectorAll('.mover-batch-frame').length")
         self.assertEqual(leftovers, 0)
-        hidden_leftovers = _session.evaluate("() => document.querySelectorAll('.mover-batch-hidden').length")
+        hidden_leftovers = _session.evaluate("() => document.querySelectorAll('[data-mover-batch-display]').length")
         self.assertEqual(hidden_leftovers, 0)
         svg_display = _session.evaluate(
             "() => getComputedStyle(document.querySelector('body > svg')).display"

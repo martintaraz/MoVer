@@ -265,6 +265,13 @@ class BrowserPool:
             future.result(timeout=start_timeout)
             self._available.put(session)
 
+    @property
+    def sessions(self) -> tuple[RenderSession, ...]:
+        """All sessions, e.g. for one-time per-session setup (warm-up
+        evaluations) right after construction. Do NOT use for rendering while
+        other threads hold checkouts — go through ``acquire()`` instead."""
+        return tuple(self._sessions)
+
     @contextmanager
     def acquire(self) -> Iterator[RenderSession]:
         session = self._available.get()

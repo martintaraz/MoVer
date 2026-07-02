@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8"/>
 <link href="./index.css" rel="stylesheet"/>
+<style>
+  /* Adversarial rules mirroring concept-library page helpers: a
+     high-specificity !important display rule on the source SVG (defeats any
+     class-based hiding during batched capture) and a viewport-clamped body
+     (hides overflowing frame wrappers from full-page screenshots). */
+  body > svg, body > svg:first-of-type { display: block !important; width: 100% !important; height: 100% !important; }
+  html, body { overflow: hidden !important; height: 100% !important; }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <title>browser_pool test animation</title>
 </head>

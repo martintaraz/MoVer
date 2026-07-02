@@ -155,11 +155,11 @@ function uniquifySvgIds(svg, prefix) {
 // Marks the frame wrappers created by seekAndAppendToDomUsingTimes so that
 // resetSeekAndAppend removes exactly what was added and nothing else.
 const BATCH_FRAME_CLASS = "mover-batch-frame";
-// Applied to every other body child during batched capture; a temporary
-// stylesheet hides them without touching their own inline styles (which must
-// survive the capture, e.g. template.html's display:none #sys-msg-path).
-const BATCH_HIDDEN_CLASS = "mover-batch-hidden";
-const BATCH_STYLE_ID = "mover-batch-style";
+// Data attribute storing a hidden element's original inline display value so
+// resetSeekAndAppend can restore it exactly (e.g. template.html's
+// display:none #sys-msg-path must stay hidden after restore).
+const BATCH_DISPLAY_ATTR = "moverBatchDisplay";
+const BATCH_DISPLAY_PRIO_ATTR = "moverBatchDisplayPrio";
 
 // Hide GSDevTools overlays so they never appear in captured frames.
 function hideGSDevTools() {
@@ -207,28 +207,42 @@ function seekAndAppendToDomUsingTimes(seekTimes, frameSize = 128) {
     // can slice the screenshot at i*frameSize. Hide EVERY other body child —
     // pipeline pages have a prompt paragraph and buttons around the SVG, and
     // display:none (not visibility:hidden) is required because visibility
-    // keeps the layout space and pushes the stack down. Also zero html+body
-    // margin/padding: index.css sets padding-left on BOTH html and body.
+    // keeps the layout space and pushes the stack down. The hiding MUST be an
+    // inline !important style: pages may carry stylesheet rules like
+    // `body > svg { display: block !important }` that outrank any class-based
+    // rule by specificity, but nothing outranks an inline !important. The
+    // original inline value is stashed in data attributes for exact restore.
     for (const child of Array.from(document.body.children)) {
-        if (!child.classList.contains(BATCH_FRAME_CLASS)) {
-            child.classList.add(BATCH_HIDDEN_CLASS);
-        }
+        if (child.classList.contains(BATCH_FRAME_CLASS)) continue;
+        child.dataset[BATCH_DISPLAY_ATTR] = child.style.getPropertyValue("display");
+        child.dataset[BATCH_DISPLAY_PRIO_ATTR] = child.style.getPropertyPriority("display");
+        child.style.setProperty("display", "none", "important");
     }
-    if (!document.getElementById(BATCH_STYLE_ID)) {
-        const style = document.createElement("style");
-        style.id = BATCH_STYLE_ID;
-        style.textContent = "." + BATCH_HIDDEN_CLASS + " { display: none !important; }\n" +
-            "html, body { margin: 0 !important; padding: 0 !important; }";
-        document.head.appendChild(style);
+    // Zero html+body margin/padding the same way (index.css sets padding-left
+    // on BOTH html and body).
+    for (const el of [document.documentElement, document.body]) {
+        el.style.setProperty("margin", "0", "important");
+        el.style.setProperty("padding", "0", "important");
     }
     hideGSDevTools();
 }
 
 function resetSeekAndAppend() {
     document.querySelectorAll("." + BATCH_FRAME_CLASS).forEach(d => d.remove());
-    document.querySelectorAll("." + BATCH_HIDDEN_CLASS).forEach(el => el.classList.remove(BATCH_HIDDEN_CLASS));
-    const style = document.getElementById(BATCH_STYLE_ID);
-    if (style) style.remove();
+    for (const el of document.querySelectorAll("[data-mover-batch-display]")) {
+        const value = el.dataset[BATCH_DISPLAY_ATTR];
+        if (value) {
+            el.style.setProperty("display", value, el.dataset[BATCH_DISPLAY_PRIO_ATTR]);
+        } else {
+            el.style.removeProperty("display");
+        }
+        delete el.dataset[BATCH_DISPLAY_ATTR];
+        delete el.dataset[BATCH_DISPLAY_PRIO_ATTR];
+    }
+    for (const el of [document.documentElement, document.body]) {
+        el.style.removeProperty("margin");
+        el.style.removeProperty("padding");
+    }
 }
 
 
