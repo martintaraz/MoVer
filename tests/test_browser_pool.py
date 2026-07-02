@@ -4,9 +4,9 @@ Unit tests for mover.converter.browser_pool.
 Run with:
     python tests/test_browser_pool.py
 
-Uses tests/assets/test_animation.html (loads GSAP from CDN, so network access
-is required — same as every MoVer animation page). One RenderSession is shared
-across tests; expect a total runtime of ~15-30 s.
+Uses tests/assets/test_animation.html, which loads the vendored GSAP from the
+converter assets mount — no network access needed (CI-friendly). One
+RenderSession is shared across tests; expect a total runtime of ~10-30 s.
 """
 
 import threading

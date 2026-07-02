@@ -11,7 +11,9 @@
   body > svg, body > svg:first-of-type { display: block !important; width: 100% !important; height: 100% !important; }
   html, body { overflow: hidden !important; height: 100% !important; }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<!-- The vendored GSAP from src/mover/converter/assets/, served by the same
+     assets mount as convert.js — no network access needed in tests/CI. -->
+<script src="./gsap.min.js"></script>
 <title>browser_pool test animation</title>
 </head>
 <body>
