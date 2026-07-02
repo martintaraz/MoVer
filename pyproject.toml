@@ -38,7 +38,6 @@ dependencies = [
     "torchvision",
     "ipykernel>=6.29.5",
     "pyrealb",
-    "opencv-python>=4.13.0.92",
 ]
 
 [project.urls]

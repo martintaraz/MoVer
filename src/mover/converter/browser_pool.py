@@ -146,6 +146,10 @@ class RenderSession:
         self._call(self._close_async(), timeout=timeout)
         self._loop.call_soon_threadsafe(self._loop.stop)
         self._thread.join(timeout=5)
+        if not self._thread.is_alive():
+            ## Only a stopped loop may be closed; skipping on a hung thread
+            ## trades a ResourceWarning for not raising out of cleanup.
+            self._loop.close()
         self._loop = None
 
     async def _close_async(self) -> None:

@@ -184,7 +184,10 @@ function seekAndAppendToDom(frameSize = 128) {
 // snapshot of the SVG to the body, forming a vertical stack of frames that can
 // be captured with a single full-page screenshot and sliced at i*frameSize.
 function seekAndAppendToDomUsingTimes(seekTimes, frameSize = 128) {
-    const srcSvg = document.querySelector("body > svg");
+    // Prefer a direct body child (the pipeline page layout), fall back to the
+    // first SVG anywhere in the document like the rest of convert.js does.
+    const srcSvg = document.querySelector("body > svg") || document.getElementsByTagName("svg")[0];
+    if (!srcSvg) throw new Error("seekAndAppendToDomUsingTimes: no <svg> element found in the page");
     for (let i = 0; i < seekTimes.length; i++) {
         tl_to_use.seek(seekTimes[i], false);
         tl_to_use.pause();
@@ -852,7 +855,7 @@ function createRenderedData(allElems, registry, propertyConfig = null, fps = 60)
 function convertAnimatedPropertiesToJson(registry=null, comparisonPropertyConfig = null) {
     tl_to_use.totalProgress(1);
     tl_to_use.totalProgress(0);
-    return animatedProps = extractAnimatedProperties(svgRef, registry);
+    return extractAnimatedProperties(svgRef, registry);
 
 }
 

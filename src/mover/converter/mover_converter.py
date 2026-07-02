@@ -114,10 +114,13 @@ async def capture_frames_server_driven(
     svg_element = page.locator("svg").first
     await svg_element.wait_for(state="visible")
 
-    ## Extracting the SVG coordinates once speeds up screenshots
+    ## Extracting the SVG coordinates once speeds up screenshots. The clip is
+    ## combined with full_page=True below: the clip region is then
+    ## document-relative, so SVGs taller than the viewport are captured whole
+    ## instead of being cut off at the fold.
     box = await svg_element.bounding_box()
     clip = {"x": box["x"], "y": box["y"],
-            "width": box["width"], "height": box["height"], "scale": 1}
+            "width": box["width"], "height": box["height"]}
 
     if in_memory:
         if output_format not in FRAME_OUTPUT_FORMATS:
