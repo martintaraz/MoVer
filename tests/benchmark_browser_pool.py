@@ -4,7 +4,9 @@ Benchmark: what do session reuse and batched capture actually buy?
 Compares four ways of rendering the same N frames of an animation:
 
   A. cold + per-frame   — fresh server/browser per render, one screenshot per
-                          frame (the convert_animation status quo)
+                          frame (approximates the pre-pool flow; the real
+                          convert_animation path also extracts JSON, so it
+                          was slower still)
   B. cold + batched     — fresh server/browser per render, one screenshot per
                           render (isolates remaining startup cost)
   C. warm + per-frame   — persistent RenderSession, one screenshot per frame

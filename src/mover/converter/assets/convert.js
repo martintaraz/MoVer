@@ -155,6 +155,11 @@ function uniquifySvgIds(svg, prefix) {
 // Marks the frame wrappers created by seekAndAppendToDomUsingTimes so that
 // resetSeekAndAppend removes exactly what was added and nothing else.
 const BATCH_FRAME_CLASS = "mover-batch-frame";
+// Applied to every other body child during batched capture; a temporary
+// stylesheet hides them without touching their own inline styles (which must
+// survive the capture, e.g. template.html's display:none #sys-msg-path).
+const BATCH_HIDDEN_CLASS = "mover-batch-hidden";
+const BATCH_STYLE_ID = "mover-batch-style";
 
 // Hide GSDevTools overlays so they never appear in captured frames.
 function hideGSDevTools() {
@@ -166,7 +171,8 @@ function hideGSDevTools() {
 function seekAndAppendToDom(frameSize = 128) {
     let info = getAnimationInfo();
     let times = []
-    for (let i = 0; i < info.steps; i++) {
+    // steps+1 samples including the endpoint, like the other samplers here.
+    for (let i = 0; i <= info.steps; i++) {
         times.push(
             info.animDuration * i / info.steps
         );
@@ -197,26 +203,32 @@ function seekAndAppendToDomUsingTimes(seekTimes, frameSize = 128) {
         svgCopy.style.setProperty("height", frameSize + "px", "important");
         svgCopy.style.setProperty("display", "block", "important");
     }
-    // display:none (not visibility:hidden): visibility keeps the source SVG's
-    // layout space, which pushed the frame stack down and made pixel-slicing
-    // captures read the wrong rows. display:none starts the stack at row 0.
-    // Zeroing body margin/padding for the same reason: the frame at index i
-    // must start exactly at pixel row i*frameSize, column 0.
-    srcSvg.style.setProperty("display", "none", "important");
-    const br = document.querySelector("body > br");
-    if (br) br.style.setProperty("display", "none");
-    document.body.style.setProperty("margin", "0", "important");
-    document.body.style.setProperty("padding", "0", "important");
+    // The wrapper stack must start exactly at pixel row 0, column 0 so callers
+    // can slice the screenshot at i*frameSize. Hide EVERY other body child —
+    // pipeline pages have a prompt paragraph and buttons around the SVG, and
+    // display:none (not visibility:hidden) is required because visibility
+    // keeps the layout space and pushes the stack down. Also zero html+body
+    // margin/padding: index.css sets padding-left on BOTH html and body.
+    for (const child of Array.from(document.body.children)) {
+        if (!child.classList.contains(BATCH_FRAME_CLASS)) {
+            child.classList.add(BATCH_HIDDEN_CLASS);
+        }
+    }
+    if (!document.getElementById(BATCH_STYLE_ID)) {
+        const style = document.createElement("style");
+        style.id = BATCH_STYLE_ID;
+        style.textContent = "." + BATCH_HIDDEN_CLASS + " { display: none !important; }\n" +
+            "html, body { margin: 0 !important; padding: 0 !important; }";
+        document.head.appendChild(style);
+    }
     hideGSDevTools();
 }
 
 function resetSeekAndAppend() {
-    document.querySelector("body > svg").style.removeProperty("display");
-    const br = document.querySelector("body > br");
-    if (br) br.style.removeProperty("display");
-    document.body.style.removeProperty("margin");
-    document.body.style.removeProperty("padding");
     document.querySelectorAll("." + BATCH_FRAME_CLASS).forEach(d => d.remove());
+    document.querySelectorAll("." + BATCH_HIDDEN_CLASS).forEach(el => el.classList.remove(BATCH_HIDDEN_CLASS));
+    const style = document.getElementById(BATCH_STYLE_ID);
+    if (style) style.remove();
 }
 
 

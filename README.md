@@ -152,7 +152,7 @@ pool.shutdown()
 
 `session.evaluate(js)` runs custom JavaScript against the live page (its global scope persists across calls), so callers can e.g. mutate animation parameters and rebuild the timeline between captures without reloading.
 
-Measured with [`tests/benchmark_browser_pool.py`](tests/benchmark_browser_pool.py) (30 frames @ 128 px): ~3.7 s/render cold and per-frame (the `convert_animation` status quo) vs ~87 ms/render with a warm session and batched capture — a ~40x speedup. Unit tests live in [`tests/test_browser_pool.py`](tests/test_browser_pool.py).
+Measured with [`tests/benchmark_browser_pool.py`](tests/benchmark_browser_pool.py) (30 frames @ 128 px): ~3.7 s/render for a cold session with per-frame screenshots (approximates the pre-pool flow — `convert_animation` additionally extracts JSON, so it was slower still) vs ~87 ms/render with a warm session and batched capture — a ~40x speedup. Unit tests live in [`tests/test_browser_pool.py`](tests/test_browser_pool.py).
 
 ### MoVer DSL
 The MoVer DSL is designed with predicates corresponding to spatial-temporal concepts that people commonly use in natural language to describe motions. For example, for the following animation prompt:

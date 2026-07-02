@@ -7,12 +7,20 @@
 <title>browser_pool test animation</title>
 </head>
 <body>
+<!-- Body structure mirrors the pipeline's template.html: content before AND
+     after the SVG, plus a display:none element. Batched capture must hide all
+     of it without disturbing inline styles. -->
+<p id="prompt">browser_pool test animation</p>
 <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-  <rect id="background" x="0" y="0" width="200" height="200" fill="#ffffff"/>
+  <rect id="background" x="0" y="0" width="200" height="200" fill="#00c800"/>
   <circle id="ball" cx="40" cy="60" r="20" fill="#d62728"/>
   <rect id="box" x="130" y="120" width="40" height="40" fill="#1f77b4"/>
 </svg>
 <br/>
+<button>Play</button>
+<button>Pause</button>
+<button>Convert</button>
+<p id="sys-msg-path" style="display:none"></p>
 <script>
   // Deterministic 2-second animation: linear motion + rotation, no easing.
   const tl = gsap.timeline();

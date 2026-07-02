@@ -22,7 +22,7 @@ asyncio event loop on a daemon thread and callers block on
 ``run_coroutine_threadsafe`` futures.
 
 Typical cost on an M-series laptop: ~1 s one-time startup per session, then
-~2 ms per frame for batched captures (vs ~1 s per render with
+~3 ms per frame for batched captures (vs ~1 s per render with
 ``convert_animation``).
 """
 
@@ -101,7 +101,12 @@ class RenderSession:
     # ── Lifecycle ────────────────────────────────────────────────────────────
 
     def start(self, timeout: float = 60.0) -> "RenderSession":
-        self.start_future().result(timeout=timeout)
+        future = self.start_future()
+        try:
+            future.result(timeout=timeout)
+        except TimeoutError:
+            future.cancel()
+            raise
         return self
 
     def start_future(self):
@@ -182,7 +187,14 @@ class RenderSession:
     # ── Internals ────────────────────────────────────────────────────────────
 
     def _call(self, coro, timeout: float = 90.0):
-        return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout=timeout)
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            return future.result(timeout=timeout)
+        except TimeoutError:
+            ## result() timing out does not stop the coroutine — cancel it so a
+            ## zombie capture can't fire resetSeekAndAppend into a later render.
+            future.cancel()
+            raise
 
     async def _capture_async(self, seek_times: list[float]) -> list[np.ndarray]:
         size = self.frame_size

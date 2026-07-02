@@ -119,23 +119,28 @@ async def capture_frames_server_driven(
     clip = {"x": box["x"], "y": box["y"],
             "width": box["width"], "height": box["height"], "scale": 1}
 
-    output_target = Path(output_path)
-    cleanup_temp_dir = output_format in VIDEO_OUTPUT_FORMATS
-    if cleanup_temp_dir:
-        output_target.parent.mkdir(parents=True, exist_ok=True)
-        frames_dir = Path(tempfile.mkdtemp(prefix="mover_frames_"))
-    else:
-        frames_dir = output_target
-        if frames_dir.suffix.lower() == f".{output_format}":
-            frames_dir = frames_dir.with_suffix("")
-        if frames_dir.exists() and not frames_dir.is_dir():
-            raise ValueError(f"Frame output path exists and is not a directory: {frames_dir}")
-        frames_dir.mkdir(parents=True, exist_ok=True)
-        for existing_frame in frames_dir.glob(f"frame_*.{output_format}"):
-            existing_frame.unlink()
-
     if in_memory:
+        if output_format not in FRAME_OUTPUT_FORMATS:
+            raise ValueError(f"in_memory capture supports only {sorted(FRAME_OUTPUT_FORMATS)}, got: {output_format}")
+        ## Memory mode must not touch the filesystem at all.
         frames = []
+        frames_dir = None
+        cleanup_temp_dir = False
+    else:
+        output_target = Path(output_path)
+        cleanup_temp_dir = output_format in VIDEO_OUTPUT_FORMATS
+        if cleanup_temp_dir:
+            output_target.parent.mkdir(parents=True, exist_ok=True)
+            frames_dir = Path(tempfile.mkdtemp(prefix="mover_frames_"))
+        else:
+            frames_dir = output_target
+            if frames_dir.suffix.lower() == f".{output_format}":
+                frames_dir = frames_dir.with_suffix("")
+            if frames_dir.exists() and not frames_dir.is_dir():
+                raise ValueError(f"Frame output path exists and is not a directory: {frames_dir}")
+            frames_dir.mkdir(parents=True, exist_ok=True)
+            for existing_frame in frames_dir.glob(f"frame_*.{output_format}"):
+                existing_frame.unlink()
 
     try:
         for frame_index in range(capture_frame_count):

@@ -85,14 +85,38 @@ class TestRenderSession(unittest.TestCase):
         for i, (c, u) in enumerate(zip(chunked, unchunked)):
             np.testing.assert_allclose(c, u, atol=1.5 / 255.0, err_msg=f"frame {i}")
 
+    def test_frames_are_flush_with_svg_content(self):
+        """Absolute alignment: a sliced frame must contain ONLY the SVG (its
+        background color reaches all four corners) — no page background, prompt
+        text, or button row bleeding in from layout offsets (html/body padding,
+        body content before the SVG). Relative batched-vs-per-frame comparisons
+        cannot catch constant offsets; this test can."""
+        frame = _session.capture_frames_at_times([0.0])[0]
+        expected = np.array([0.0, 200 / 255.0, 0.0, 1.0], dtype=np.float32)
+        for name, corner in [("top-left", frame[0, 0]), ("top-right", frame[0, -1]),
+                             ("bottom-left", frame[-1, 0]), ("bottom-right", frame[-1, -1])]:
+            np.testing.assert_allclose(corner, expected, atol=0.02,
+                                       err_msg=f"{name} corner is not SVG background")
+
     def test_capture_resets_page(self):
         _session.capture_frames_at_times([0.0, 1.0])
         leftovers = _session.evaluate("() => document.querySelectorAll('.mover-batch-frame').length")
         self.assertEqual(leftovers, 0)
+        hidden_leftovers = _session.evaluate("() => document.querySelectorAll('.mover-batch-hidden').length")
+        self.assertEqual(hidden_leftovers, 0)
         svg_display = _session.evaluate(
             "() => getComputedStyle(document.querySelector('body > svg')).display"
         )
         self.assertNotEqual(svg_display, "none")
+        ## Elements with their own inline display:none must stay hidden after reset.
+        sys_msg_display = _session.evaluate(
+            "() => getComputedStyle(document.querySelector('#sys-msg-path')).display"
+        )
+        self.assertEqual(sys_msg_display, "none")
+        prompt_display = _session.evaluate(
+            "() => getComputedStyle(document.querySelector('#prompt')).display"
+        )
+        self.assertNotEqual(prompt_display, "none")
 
     def test_failed_capture_cleans_up(self):
         """A timeline that throws mid-append must not leave frame wrappers or a
