@@ -50,4 +50,5 @@ examples/svg/eye.svg
 !examples/teaser_hi*
 .cursor/*
 .github/*
+!.github/workflows/
 plans/*
