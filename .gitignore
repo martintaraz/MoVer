@@ -22,6 +22,9 @@ tests/*
 !tests/test_mover_synthesizer.py
 !tests/test_mover_fol_generator.py
 !tests/test_prompt_generation.py
+!tests/test_browser_pool.py
+!tests/benchmark_browser_pool.py
+!tests/assets/
 
 ## Outputs
 example_output/
@@ -47,4 +50,5 @@ examples/svg/eye.svg
 !examples/teaser_hi*
 .cursor/*
 .github/*
+!.github/workflows/
 plans/*

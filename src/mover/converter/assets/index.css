@@ -12,8 +12,3 @@ body {
     overflow: scroll;
     display: none;
 }
-
-svg {
-    background-image: url('./grid.svg');
-    background-repeat: "no-repeat";
-}

@@ -68,22 +68,22 @@ function getAnimationInfo(fps = 60) {
     const INFINITE_THRESHOLD = 1000000;
     let animDuration = tl_to_use.totalDuration();
     console.log("Timeline total duration:", animDuration);
-    
+
     if (!isFinite(animDuration) || animDuration > INFINITE_THRESHOLD) {
         console.warn("Detected infinite timeline (duration > 1M seconds), calculating single cycle duration...");
         const children = tl_to_use.getChildren();
         let maxEndTime = 0;
-        
+
         children.forEach(child => {
             const childStart = child.startTime();
             const childDuration = child.duration();
             const baseEnd = childStart + childDuration;
-            
+
             if (isFinite(baseEnd) && baseEnd > maxEndTime) {
                 maxEndTime = baseEnd;
             }
         });
-        
+
         if (maxEndTime > 0 && maxEndTime < INFINITE_THRESHOLD) {
             animDuration = maxEndTime;
             console.log("Calculated single cycle duration:", animDuration);
@@ -92,7 +92,7 @@ function getAnimationInfo(fps = 60) {
             console.warn("Could not calculate cycle duration, falling back to 10 seconds");
         }
     }
-    
+
     const steps = Math.ceil(animDuration * sampleFps);
     return { animDuration, fps: sampleFps, steps };
 }
@@ -119,6 +119,133 @@ function seekToFrame(frameIndex, fps, animDuration) {
     tl_to_use.seek(seekTime, false);
     tl_to_use.pause();
     return true;
+}
+
+function seekToTime(seekTime) {
+    tl_to_use.seek(seekTime, false);
+    tl_to_use.pause();
+    return true;
+}
+
+function uniquifySvgIds(svg, prefix) {
+  const map = new Map();
+
+  svg.querySelectorAll("[id]").forEach(el => {
+    const oldId = el.id;
+    const newId = `${prefix}_${oldId}`;
+    map.set(oldId, newId);
+    el.id = newId;
+  });
+
+  svg.querySelectorAll("*").forEach(el => {
+    for (const attr of el.getAttributeNames()) {
+      let value = el.getAttribute(attr);
+
+      for (const [oldId, newId] of map) {
+        value = value
+          .replaceAll(`url(#${oldId})`, `url(#${newId})`)
+          .replaceAll(`#${oldId}`, `#${newId}`);
+      }
+
+      el.setAttribute(attr, value);
+    }
+  });
+}
+
+// Marks the frame wrappers created by seekAndAppendToDomUsingTimes so that
+// resetSeekAndAppend removes exactly what was added and nothing else.
+const BATCH_FRAME_CLASS = "mover-batch-frame";
+// Data attribute storing a hidden element's original inline display value so
+// resetSeekAndAppend can restore it exactly (e.g. template.html's
+// display:none #sys-msg-path must stay hidden after restore).
+const BATCH_DISPLAY_ATTR = "moverBatchDisplay";
+const BATCH_DISPLAY_PRIO_ATTR = "moverBatchDisplayPrio";
+
+// Hide GSDevTools overlays so they never appear in captured frames.
+function hideGSDevTools() {
+    const devtools = document.querySelector("#GSDevTools");
+    if (devtools) devtools.style.display = "none";
+    document.querySelectorAll('[class*="gs-dev-tools"]').forEach(el => el.style.display = "none");
+}
+
+function seekAndAppendToDom(frameSize = 128) {
+    let info = getAnimationInfo();
+    let times = []
+    // steps+1 samples including the endpoint, like the other samplers here.
+    for (let i = 0; i <= info.steps; i++) {
+        times.push(
+            info.animDuration * i / info.steps
+        );
+    }
+    seekAndAppendToDomUsingTimes(times, frameSize)
+}
+
+// Seek the timeline to each time in seekTimes and append a frameSize×frameSize
+// snapshot of the SVG to the body, forming a vertical stack of frames that can
+// be captured with a single full-page screenshot and sliced at i*frameSize.
+function seekAndAppendToDomUsingTimes(seekTimes, frameSize = 128) {
+    // Prefer a direct body child (the pipeline page layout), fall back to the
+    // first SVG anywhere in the document like the rest of convert.js does.
+    const srcSvg = document.querySelector("body > svg") || document.getElementsByTagName("svg")[0];
+    if (!srcSvg) throw new Error("seekAndAppendToDomUsingTimes: no <svg> element found in the page");
+    for (let i = 0; i < seekTimes.length; i++) {
+        tl_to_use.seek(seekTimes[i], false);
+        tl_to_use.pause();
+        const wrapper = document.createElement("div");
+        wrapper.className = BATCH_FRAME_CLASS;
+        const svgCopy = srcSvg.cloneNode(true);
+        uniquifySvgIds(svgCopy, "timestamp_" + seekTimes[i]);
+        wrapper.appendChild(svgCopy);
+        document.body.appendChild(wrapper);
+
+        wrapper.style.width = frameSize + "px";
+        wrapper.style.height = frameSize + "px";
+        wrapper.style.overflow = "hidden";
+
+        svgCopy.style.setProperty("width", frameSize + "px", "important");
+        svgCopy.style.setProperty("height", frameSize + "px", "important");
+        svgCopy.style.setProperty("display", "block", "important");
+    }
+    // The wrapper stack must start exactly at pixel row 0, column 0 so callers
+    // can slice the screenshot at i*frameSize. Hide EVERY other body child —
+    // pipeline pages have a prompt paragraph and buttons around the SVG, and
+    // display:none (not visibility:hidden) is required because visibility
+    // keeps the layout space and pushes the stack down. The hiding MUST be an
+    // inline !important style: pages may carry stylesheet rules like
+    // `body > svg { display: block !important }` that outrank any class-based
+    // rule by specificity, but nothing outranks an inline !important. The
+    // original inline value is stashed in data attributes for exact restore.
+    for (const child of Array.from(document.body.children)) {
+        if (child.classList.contains(BATCH_FRAME_CLASS)) continue;
+        child.dataset[BATCH_DISPLAY_ATTR] = child.style.getPropertyValue("display");
+        child.dataset[BATCH_DISPLAY_PRIO_ATTR] = child.style.getPropertyPriority("display");
+        child.style.setProperty("display", "none", "important");
+    }
+    // Zero html+body margin/padding the same way (index.css sets padding-left
+    // on BOTH html and body).
+    for (const el of [document.documentElement, document.body]) {
+        el.style.setProperty("margin", "0", "important");
+        el.style.setProperty("padding", "0", "important");
+    }
+    hideGSDevTools();
+}
+
+function resetSeekAndAppend() {
+    document.querySelectorAll("." + BATCH_FRAME_CLASS).forEach(d => d.remove());
+    for (const el of document.querySelectorAll("[data-mover-batch-display]")) {
+        const value = el.dataset[BATCH_DISPLAY_ATTR];
+        if (value) {
+            el.style.setProperty("display", value, el.dataset[BATCH_DISPLAY_PRIO_ATTR]);
+        } else {
+            el.style.removeProperty("display");
+        }
+        delete el.dataset[BATCH_DISPLAY_ATTR];
+        delete el.dataset[BATCH_DISPLAY_PRIO_ATTR];
+    }
+    for (const el of [document.documentElement, document.body]) {
+        el.style.removeProperty("margin");
+        el.style.removeProperty("padding");
+    }
 }
 
 
@@ -168,7 +295,7 @@ function convertToKeyframes(allElems) {
                 // Remove duplicates and sort keyframe times
                 elementData[tween_type].keyframes = [...new Set(elementData[tween_type].tempTimes)].sort((a, b) => a - b)
                 delete elementData[tween_type].tempTimes // Clean up temporary array
-                
+
                 // For each keyframe time, seek timeline and record data
                 elementData[tween_type].keyframes.forEach(time => {
                     tl_to_use.seek(time, false).pause()
@@ -180,7 +307,7 @@ function convertToKeyframes(allElems) {
                     // Record transformedPts for all tween types
                     let transformedPts = getTransformedAABB(elem)
                     elementData[tween_type].transformedPts.push(transformedPts)
-                    
+
                     // Record accumulated value based on tween type
                     let analyzedResult = analyzeFrameMatrixAPI(elem)
                     switch (tween_type) {
@@ -249,7 +376,7 @@ function getAllTransformationValues(animatedElems, fps = 60) {
 
             let elemName = elem.id
             let currElemData = res[elemName]
-            
+
             currElemData["transformedPts"] = currElemData["transformedPts"] || [];
             currElemData["transformedPts"].push(getTransformedAABB(elem));
             currElemData["CTM"] = currElemData["CTM"] || [];
@@ -301,7 +428,7 @@ function analyzeFrameMatrixAPI(elem) {
     res["rotate_acc"] = gsap.getProperty(elem, "rotate")
     res["skewX_acc"] = gsap.getProperty(elem, "skewX")
     res["skewY_acc"] = gsap.getProperty(elem, "skewY")
-        
+
     // transform origin
     res["originInput"] = elem._gsap.origin
     res["originIsAbsolute"] = elem._gsap.originIsAbsolute
@@ -329,7 +456,7 @@ function analyzeFrameMatrixAPI(elem) {
 function compute_diff_acc(anim_data) {
     console.log("Computing diff and acc...")
     let steps = anim_data["info"]["steps"]
-    
+
     for (var element_id in anim_data) {
         if (element_id == 'info') {
             continue
@@ -431,20 +558,20 @@ function createObjectList(animatedElems, non_animatedElems) {
                     elem_data["shape"] = "rectangle"
                 }
                 break;
-                
+
             case "circle":
                 let diameter = parseFloat(elem.getAttribute("r")) * 2
                 var elem_size = [diameter, diameter]
                 elem_data["size"] = elem_size;
                 elem_data["shape"] = "circle"
                 break;
-            
+
             case "path":
                 if (elem.id.includes("letter")) {
                     elem_data["shape"] = elem.id.split("-")[1]
                 }
                 break;
-            
+
             case "defs":
                 continue;
         }
@@ -460,7 +587,7 @@ function createObjectList(animatedElems, non_animatedElems) {
         }
 
         objectData.push(elem_data)
-    }        
+    }
     return objectData
 }
 
@@ -596,7 +723,7 @@ function getPositionInTime(targetCentroids, elementId, tolerance=0.1) {
             }
         }
     }
-    
+
     return results;
 }
 
@@ -721,8 +848,15 @@ function createRenderedData(allElems, registry, propertyConfig = null, fps = 60)
 
     // Reset timeline to start
     tl_to_use.seek(0, false).pause();
-    
+
     return res;
+}
+
+function convertAnimatedPropertiesToJson(registry=null, comparisonPropertyConfig = null) {
+    tl_to_use.totalProgress(1);
+    tl_to_use.totalProgress(0);
+    return extractAnimatedProperties(svgRef, registry);
+
 }
 
 async function convert(port=8001, disableEasing=false, saveKeyframes=false, saveForComparison=false, registry=null, comparisonPropertyConfig=null, saveAnimatedProperties=false, fps=60){

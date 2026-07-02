@@ -1,0 +1,56 @@
+name: rendering-tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rendering:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      ## Lean install: the rendering path (mover.converter) needs only these
+      ## runtime deps — notably NOT torch/torchvision, which are used solely by
+      ## the DSL verifier (src/mover/dsl/fol_executor.py). opencv-headless
+      ## avoids pulling GUI system libraries onto the runner.
+      - name: Install converter dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . --no-deps
+          pip install fastapi uvicorn playwright numpy pillow opencv-python-headless
+
+      - name: Install Chromium
+        run: playwright install --with-deps chromium
+
+      ## Browser-pool unit tests: batched-vs-per-frame pixel equivalence,
+      ## absolute frame alignment, chunking, DOM reset, cleanup on failure,
+      ## cross-thread pool consistency. Fully offline (vendored GSAP).
+      - name: Browser pool tests
+        run: python tests/test_browser_pool.py
+
+      ## Classic converter path, PNG: renders the 2 s / 10 fps fixture to
+      ## 21 per-frame PNGs (steps+1) and extracts the animation JSON.
+      - name: Render smoke test (PNG frames + JSON)
+        run: |
+          python -m mover.converter.mover_converter tests/assets/test_animation.html 0 --create-video --format png --video-fps 10 --output-dir /tmp/render_png
+          test -f /tmp/render_png/test_animation_animation_10_png/frame_000020.png
+          test -f /tmp/render_png/test_animation_data.json
+          python -c "import json; d = json.load(open('/tmp/render_png/test_animation_data.json')); assert d['info']['steps'] == 20, d['info']"
+
+      ## Classic converter path, SVG: same animation as per-frame SVG markup.
+      - name: Render smoke test (SVG frames)
+        run: |
+          python -m mover.converter.mover_converter tests/assets/test_animation.html 0 --create-video --format svg --video-fps 10 --output-dir /tmp/render_svg
+          test -f /tmp/render_svg/test_animation_animation_10_svg/frame_000020.svg
+          grep -q "<svg" /tmp/render_svg/test_animation_animation_10_svg/frame_000000.svg
